@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DREAMGEN: 通过视频世界模型解锁机器人学习的泛化能力</title>
+    
+    <!-- KaTeX for LaTeX Rendering -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" integrity="sha384-n8MVd4RsNIU0KOVEMVIhbGKLCeKXdufyHhETzT2ga5ZmADfxLCocYlBIYzQBooaf" crossorigin="anonymous">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js" integrity="sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG+vnGctmUb0ZY0l8" crossorigin="anonymous"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js" integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05" crossorigin="anonymous"
+        onload="renderMathInElement(document.body, {
+            delimiters: [
+                {left: '$$', right: '$$', display: true},
+                {left: '\\[', right: '\\]', display: true},
+                {left: '$', right: '$', display: false},
+                {left: '\\(', right: '\\)', display: false}
+            ],
+            throwOnError : false
+        });"></script>
+
+    <style>
+        :root {
+            --apple-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            --background-color: #ffffff;
+            --text-color: #1d1d1f;
+            --secondary-text-color: #6e6e73;
+            --link-color: #0071e3;
+            --section-background: #f5f5f7;
+            --border-color: #d2d2d7;
+            --card-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            --card-hover-shadow: 0 8px 24px rgba(0,0,0,0.1);
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --background-color: #121212;
+                --text-color: #f5f5f7;
+                --secondary-text-color: #a1a1a6;
+                --link-color: #2997ff;
+                --section-background: #1d1d1f;
+                --border-color: #424245;
+            }
+        }
+
+        body {
+            font-family: var(--apple-font);
+            margin: 0;
+            padding: 0;
+            background-color: var(--background-color);
+            color: var(--text-color);
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        .container {
+            max-width: 980px;
+            margin: 0 auto;
+            padding: 0 22px;
+        }
+
+        header {
+            text-align: center;
+            padding: 120px 0 60px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        header .eyebrow {
+            font-size: 1.2rem;
+            color: var(--secondary-text-color);
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+
+        header h1 {
+            font-size: 3.5rem;
+            margin: 0;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            background: -webkit-linear-gradient(45deg, #0071e3, #6a3ab2, #e64980);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        header .paper-info {
+            margin-top: 20px;
+            color: var(--secondary-text-color);
+            font-size: 1rem;
+        }
+        
+        header .paper-info a {
+            color: var(--link-color);
+            text-decoration: none;
+        }
+
+        .section {
+            padding: 80px 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .section-title {
+            font-size: 2.5rem;
+            font-weight: 700;
+            text-align: center;
+            margin-bottom: 50px;
+        }
+
+        .section-title span {
+            display: block;
+            font-size: 1.2rem;
+            color: var(--secondary-text-color);
+            margin-bottom: 5px;
+            font-weight: 600;
+        }
+
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+        }
+
+        .card {
+            background: var(--section-background);
+            padding: 30px;
+            border-radius: 20px;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            box-shadow: var(--card-shadow);
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: var(--card-hover-shadow);
+        }
+
+        .card h3 {
+            font-size: 1.5rem;
+            margin-top: 0;
+            color: var(--link-color);
+        }
+
+        .card p {
+            color: var(--secondary-text-color);
+            font-size: 1.05rem;
+        }
+
+        .highlight {
+            background-color: rgba(0, 113, 227, 0.1);
+            color: var(--link-color);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+        
+        .method-flow {
+            counter-reset: step-counter;
+            padding-left: 0;
+            list-style: none;
+        }
+
+        .method-step {
+            position: relative;
+            margin-bottom: 40px;
+            padding: 25px;
+            background-color: var(--section-background);
+            border-radius: 15px;
+            border: 1px solid var(--border-color);
+            padding-left: 80px;
+        }
+
+        .method-step:before {
+            counter-increment: step-counter;
+            content: counter(step-counter);
+            position: absolute;
+            left: 20px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 40px;
+            height: 40px;
+            background-color: var(--link-color);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            font-weight: 700;
+        }
+
+        .method-step h4 {
+            font-size: 1.2rem;
+            margin: 0 0 10px 0;
+        }
+
+        .method-step p {
+            margin: 0;
+            color: var(--secondary-text-color);
+        }
+
+        .img-placeholder {
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            background-color: var(--section-background);
+            border: 1px dashed var(--border-color);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--secondary-text-color);
+            font-style: italic;
+            margin: 20px 0;
+            transition: background-color 0.3s ease;
+        }
+        
+        .img-placeholder:hover {
+            background-color: var(--background-color);
+        }
+        
+        .table-container {
+            overflow-x: auto;
+            background: var(--section-background);
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 30px;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+        
+        th, td {
+            text-align: left;
+            padding: 12px 15px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        th {
+            font-weight: 600;
+        }
+        
+        tbody tr:last-child td {
+            border-bottom: none;
+        }
+        
+        .code-block {
+            background-color: var(--section-background);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 20px;
+            font-family: "SF Mono", "Menlo", "Monaco", monospace;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-size: 0.9rem;
+            margin-top: 20px;
+        }
+
+        .reviewer-section {
+            background-color: var(--section-background);
+            border-radius: 20px;
+            padding: 40px;
+        }
+
+        .reviewer-section h3 {
+            margin-top: 0;
+            font-size: 1.5rem;
+        }
+        
+        .reviewer-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-top: 30px;
+        }
+
+        .review-item {
+            padding-bottom: 15px;
+        }
+        
+        .review-item h4 {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 1.1rem;
+            margin: 0 0 10px 0;
+        }
+        
+        .review-item h4 .icon {
+            font-size: 1.5rem;
+        }
+
+        .review-item ul {
+            padding-left: 20px;
+            color: var(--secondary-text-color);
+        }
+
+        .one-more-thing {
+            text-align: center;
+            padding: 100px 0;
+        }
+        
+        .one-more-thing h2 {
+            font-size: 3rem;
+            font-weight: 700;
+        }
+
+        .one-more-thing p {
+            font-size: 1.2rem;
+            color: var(--secondary-text-color);
+            max-width: 600px;
+            margin: 20px auto 0;
+        }
+
+        footer {
+            text-align: center;
+            padding: 40px 0;
+            font-size: 0.9rem;
+            color: var(--secondary-text-color);
+        }
+        
+        .katex-display {
+            overflow: auto;
+            padding: 1em 0;
+        }
+        
+        .katex {
+            font-size: 1.1em !important;
+        }
+
+        @media (max-width: 768px) {
+            header h1 {
+                font-size: 2.5rem;
+            }
+            .section-title {
+                font-size: 2rem;
+            }
+            .reviewer-grid {
+                grid-template-columns: 1fr;
+            }
+            .method-step {
+                padding-left: 25px;
+                padding-top: 60px;
+            }
+            .method-step:before {
+                top: 20px;
+                left: 50%;
+                transform: translateX(-50%);
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="container">
+            <div class="eyebrow">学术论文深度解析</div>
+            <h1>DREAMGEN</h1>
+            <p class="lead">通过视频世界模型解锁机器人学习的泛化能力</p>
+            <div class="paper-info">
+                Joel Jang, Seonghyeon Ye, Zongyu Lin, Jiannan Xiang, et al.
+                <br>
+                arXiv:2505.12705v2 [cs.RO] | 17 Jun 2025
+                <br>
+                <a href="https://arxiv.org/abs/2505.12705" target="_blank">阅读原文</a>
+            </div>
+        </div>
+    </header>
+
+    <main>
+        <section class="section" id="motivation">
+            <div class="container">
+                <h2 class="section-title">
+                    <span>The Big Idea</span>
+                    研究动机
+                </h2>
+                <div class="card-grid">
+                    <div class="card">
+                        <h3>问题：数据瓶颈</h3>
+                        <p>现代通用机器人系统（如 Foundation Models）依赖于大规模的人工遥操作数据。然而，为每个新任务、新环境手动收集数据是极其<span class="highlight">昂贵</span>且<span class="highlight">劳动密集</span>的，严重限制了机器人学习的可扩展性。</p>
+                    </div>
+                    <div class="card">
+                        <h3>现有方案的局限</h3>
+                        <p>传统仿真环境虽然能生成合成数据，但存在两大问题：1) 需要大量的手动工程来搭建场景和任务；2) 存在难以跨越的“模拟到现实”的鸿沟（Sim-to-Real Gap），导致在仿真中训练的策略在真实机器人上表现不佳。</p>
+                    </div>
+                    <div class="card">
+                        <h3>本文的解法：DREAMGEN</h3>
+                        <p>本文提出一种全新的范式：利用最先进的<span class="highlight">视频世界模型 (Video World Models)</span> 作为合成数据生成器。仅需极少量的种子数据（例如，单一场景下的单一“抓取与放置”任务数据），DREAMGEN 就能生成大量、多样化、照片般逼真的机器人操作视频，从而训练出能够泛化到<span class="highlight">全新行为</span>和<span class="highlight">全新环境</span>的机器人策略。</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="section" id="modeling" style="background-color: var(--section-background);">
+            <div class="container">
+                <h2 class="section-title">
+                    <span>The Framework</span>
+                    数学表示及建模
+                </h2>
+                <p style="text-align:center; max-width: 800px; margin: -30px auto 50px; color: var(--secondary-text-color);">DREAMGEN 的核心是一个简洁高效的四阶段流程，它将视频生成模型的强大先验知识转化为机器人可执行的策略。</p>
+                <div class="img-placeholder">Placeholder for Figure 2: DREAMGEN Overview</div>
+                
+                <ol class="method-flow">
+                    <li class="method-step">
+                        <h4>Step 1: 微调视频世界模型 (Finetune Video World Model)</h4>
+                        <p>在人类遥操作的机器人轨迹数据上，对一个预训练的视频生成模型进行微调。为了保留模型从互联网视频中学到的广泛物理知识和语义理解，我们采用 <span class="highlight">Low-Rank Adaptation (LoRA)</span> 技术进行高效微调。</p>
+                    </li>
+                    <li class="method-step">
+                        <h4>Step 2: 生成视频推演 (Rollout Video World Model)</h4>
+                        <p>给定一个初始帧 $s_0$ 和一个语言指令 $i$ (例如 "Water the flowers")，微调后的模型会生成一段视频序列（rollout），描绘机器人执行该指令的过程。这个过程可以被表示为：
+                        $$ (s_1, s_2, ..., s_H) = \text{VideoWorldModel}(s_0, i) $$
+                        其中 $H$ 是生成视频的长度。</p>
+                    </li>
+                    <li class="method-step">
+                        <h4>Step 3: 标注伪动作 (Label Pseudo Actions)</h4>
+                        <p>生成的视频只包含像素信息，没有机器人动作标签。为了解决这个问题，我们使用一个独立的模型来推断出“伪动作” $\hat{a}$。这构成了我们称之为<span class="highlight">“神经轨迹” (neural trajectories)</span> 的核心。本文探索了两种方法：</p>
+                        <p><strong>1. 逆动力学模型 (Inverse Dynamics Model - IDM):</strong> 训练一个模型，根据一对图像帧 $(s_t, s_{t+H})$ 预测两者之间的动作序列 $\hat{a}_{t:t+H}$。IDM 专注于捕捉机器人的动力学特性。</p>
+                        <p><strong>2. 潜空间动作模型 (Latent Action Model - LAPA):</strong> 该模型学习一个潜空间动作表示，这个动作能够捕捉两帧图像之间的视觉变化（visual delta）。其优势在于无需真实的动作标签进行训练。</p>
+                        <p>最终，我们得到一系列的 (视频, 伪动作) 数据对：$\{(s_{0:H}, \hat{a}_{0:H}), (s_{1:H+1}, \hat{a}_{1:H+1}), ...\}$</p>
+                         <div class="img-placeholder">Placeholder for Figure 3: Extracting Pseudo Actions (IDM and LAPA Architectures)</div>
+                    </li>
+                    <li class="method-step">
+                        <h4>Step 4: 训练视觉-马达策略 (Visuomotor Policy Training)</h4>
+                        <p>最后，我们使用这些生成的“神经轨迹”来训练一个下游的视觉-马达策略 $\pi_\theta$。该策略学习在给定当前图像观测 $o_t$ 和任务指令 $i_t$ 的情况下，预测出伪动作序列 $\hat{a}_{t:t+H}$。
+                        $$ \pi_\theta(o_t, i_t) \rightarrow \hat{a}_{t:t+H} $$
+                        由于神经轨迹与具体的策略架构无关，DREAMGEN 可以为多种主流策略模型（如 Diffusion Policy, $\pi_0$, GR00T N1）生成训练数据。</p>
+                    </li>
+                </ol>
+            </div>
+        </section>
+
+        <section class="section" id="experiments">
+            <div class="container">
+                <h2 class="section-title">
+                    <span>Putting It to the Test</span>
+                    实验方法与设计
+                </h2>
+                <p style="text-align:center; max-width: 800px; margin: -30px auto 50px; color: var(--secondary-text-color);">本文通过三大类实验，系统性地验证了 DREAMGEN 的有效性：数据增强、行为泛化和环境泛化。</p>
+
+                <h3>实验一：训练数据增强 (Training Data Augmentation)</h3>
+                <p><strong>目标：</strong> 验证神经轨迹能否提升在已有任务上的性能。</p>
+                <p><strong>仿真实验 (RoboCasa Benchmark):</strong></p>
+                <ul>
+                    <li><strong>数据集：</strong> RoboCasa，包含24个日常操作任务。</li>
+                    <li><strong>设置：</strong> 在三种不同规模的真实数据（Low: 720, Mid: 2.4k, High: 7.2k 轨迹）基础上，加入不同数量（最多240k）的神经轨迹进行联合训练。</li>
+                    <li><strong>模型：</strong> 基础视频模型为 WAN2.1，在1200个人类演示上微调。策略模型为 GR00T N1。</li>
+                    <li><strong>伪动作：</strong> 同时测试了 IDM 和 LAPA 两种伪动作标注方法。</li>
+                </ul>
+                <div class="img-placeholder">Placeholder for Figure 4: Scaling # of Neural Trajectories in RoboCasa</div>
+                
+                <p><strong>真实世界实验:</strong></p>
+                <ul>
+                    <li><strong>机器人平台：</strong> GR1 (人形), Franka Emika (机械臂), SO-100 (低成本机械臂)，共9个真实世界任务。</li>
+                    <li><strong>设置：</strong> 采用<span class="highlight">低数据模式 (Low Data)</span>，每个任务仅使用10-13条真实轨迹，然后与生成的神经轨迹（GR1: 300条, Franka: 100条, SO-100: 40-50条）以1:1的比例进行联合训练。</li>
+                    <li><strong>IDM 训练数据:</strong> GR1 的 IDM 在2884条 pick-and-place 轨迹上训练。Franka 的 IDM 在49895条 DROID 数据上训练。</li>
+                </ul>
+                <div class="img-placeholder">Placeholder for Figure 5: Real-world Robot Evaluation Results</div>
+
+                <h3>实验二与三：解锁泛化能力 (Unlocking Generalization)</h3>
+                <p><strong>目标：</strong> 验证 DREAMGEN 是否能让机器人执行<span class="highlight">从未见过</span>的行为和在<span class="highlight">从未见过</span>的环境中操作。</p>
+                <ul>
+                    <li><strong>基础模型：</strong> 在单一实验室环境中，使用 GR1 人形机器人收集的 2,884 条 pick-and-place 任务轨迹，来微调视频世界模型。</li>
+                    <li><strong>策略训练：</strong> 下游策略<span class="highlight">仅使用生成的神经轨迹</span>进行训练，不接触任何与新行为/新环境相关的真实遥操作数据。</li>
+                    <li><strong>行为泛化 (Behavior Generalization):</strong> 在原始环境中，测试14个全新的行为（如倒水、熨烫、使用吸尘器等）。</li>
+                    <li><strong>环境泛化 (Environment Generalization):</strong> 在10个全新的环境中，测试已见行为（pick-and-place 的变种）和7个全新行为。</li>
+                </ul>
+                
+                <h3>DREAMGEN BENCH: 机器人视频生成基准</h3>
+                <p>为了在没有真实机器人的情况下评估视频世界模型对机器人任务的适用性，本文还提出了一个基准测试 DREAMGEN BENCH。</p>
+                <ul>
+                    <li><strong>评估模型:</strong> 评估了4个视频模型 (Hunyuan, CogVideoX, WAN 2.1, Cosmos) 的 zero-shot 和 fine-tuned 版本。</li>
+                    <li><strong>评估指标:</strong>
+                        <ol>
+                            <li><strong>指令遵循 (Instruction Following - IF):</strong> 生成的视频是否严格遵循了语言指令。使用 VLM (如 GPT-4o, Qwen2.5-VL) 进行自动评分。</li>
+                            <li><strong>物理对齐 (Physics Alignment - PA):</strong> 视频中的物理交互是否真实可信。使用专门的 VLM (VideoCon-Physics) 和通用 VLM 进行综合评分。</li>
+                        </ol>
+                    </li>
+                    <li><strong>评估 Prompt 示例 (Success Rate):</strong>
+                        <div class="code-block">User: {{Video: <vid_path>}}{{Text: "The video shows a robot arm completing a specific task. Please evaluate: if the video follows the instruction to finish the task '{prompt}', give a positive score. Reply only '0' for No or '1' for Yes."}}
+Assistant: 0 or 1</div>
+                    </li>
+                </ul>
+            </div>
+        </section>
+
+        <section class="section" id="results" style="background-color: var(--section-background);">
+            <div class="container">
+                <h2 class="section-title">
+                    <span>The Payoff</span>
+                    实验结果及核心结论
+                </h2>
+
+                <h3>结论一：神经轨迹作为数据增强，效果显著</h3>
+                <p>在 RoboCasa 仿真和真实世界实验中，联合训练神经轨迹都带来了<span class="highlight">持续且显著的性能提升</span>。如图4所示，任务成功率与神经轨迹的数量呈<span class="highlight">对数线性关系</span>，这表明通过生成更多合成数据来扩展机器人学习能力具有巨大潜力。即使只用神经轨迹训练，也能达到不俗的性能（在RoboCasa上平均20.6%成功率），证明了生成数据的质量。</p>
+                
+                <h3>结论二：实现从零到一的革命性泛化</h3>
+                <p>这是本文最惊人的发现。仅基于单一的 pick-and-place 任务数据训练，DREAMGEN 能让机器人在没有见过任何相关真实演示的情况下，学会执行全新的任务动词。</p>
+
+                <div class="table-container">
+                    <p style="text-align: center; font-weight: bold; margin-bottom: 15px;">Table 1: 在新行为和新环境下的成功率 (%)</p>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>场景</th>
+                                <th>任务类型</th>
+                                <th>模型</th>
+                                <th>平均成功率</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td rowspan="2"><strong>已见环境，新行为 (14个任务)</strong></td>
+                                <td rowspan="2">倒水、点击按钮、开微波炉...</td>
+                                <td>GR00T N1 (基线)</td>
+                                <td>11.2%</td>
+                            </tr>
+                            <tr>
+                                <td><strong>w/ DREAMGEN</strong></td>
+                                <td><strong>43.2%</strong></td>
+                            </tr>
+                            <tr>
+                                <td rowspan="2"><strong>新环境，已见/新行为 (13个任务)</strong></td>
+                                <td rowspan="2">在厨房捡橘子、给花浇水...</td>
+                                <td>GR00T N1 (基线)</td>
+                                <td>0.0%</td>
+                            </tr>
+                            <tr>
+                                <td><strong>w/ DREAMGEN</strong></td>
+                                <td><strong>28.5%</strong></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p style="margin-top:20px;">基线模型（仅在 pick-and-place 数据上训练）在新环境中的成功率为0%，而 DREAMGEN 实现了<span class="highlight">从0到28.5%</span>的突破。这证明了 DREAMGEN 能够真正解锁机器人超越其训练数据分布的泛化能力。</p>
+
+                <h3>结论三：DREAMGEN BENCH 可有效预测下游任务性能</h3>
+                <p>实验发现，一个视频模型在 DREAMGEN BENCH 上的得分（综合IF和PA指标）与使用该模型生成的神经轨迹训练出的机器人策略的最终性能呈<span class="highlight">强正相关</span>。这意味着我们可以使用这个轻量级的基准来快速迭代和选择更适合机器人任务的视频世界模型，而无需进行昂贵的真实机器人部署和训练。</p>
+                <div class="img-placeholder">Placeholder for Figure 6: Performance correlation between DREAMGEN BENCH and RoboCasa</div>
+
+            </div>
+        </section>
+
+        <section class="section" id="review">
+            <div class="container">
+                <h2 class="section-title">
+                    <span>Reviewer's Take</span>
+                    我的评论
+                </h2>
+                <div class="reviewer-section">
+                    <p>DREAMGEN 是一项非常出色且具有启发性的工作。它提出的范式简洁、优雅且影响力巨大，有效地将生成式AI的最新进展与机器人学的核心挑战——数据稀缺和泛化——连接起来。可以说，它为“如何规模化地教机器人”这一根本问题，提供了一个极具前景的答案。</p>
+                    <div class="reviewer-grid">
+                        <div class="review-item">
+                            <h4><span class="icon">👍</span> 优势 (Strengths)</h4>
+                            <ul>
+                                <li><strong>范式创新：</strong> 将视频世界模型用作“数据生成器”而非传统的“规划器”，思路清晰，巧妙地绕开了实时规划的巨大计算开销，充分利用了模型的生成能力。</li>
+                                <li><strong>惊人的泛化能力：</strong> “从零到一”地解锁新技能和新环境的能力是本文最大的亮点，这在机器人学习领域是里程碑式的进展。</li>
+                                <li><strong>简洁有效的流程：</strong> 四步法流程逻辑清晰，易于理解和复现，具有很强的通用性，可应用于不同机器人和策略模型。</li>
+                                <li><strong>宝贵的社区贡献：</strong> 提出的 DREAMGEN BENCH 为评估视频模型在机器人领域的潜力提供了一个低成本、高效率的工具，将有力推动两个领域的交叉融合。</li>
+                            </ul>
+                        </div>
+                        <div class="review-item">
+                            <h4><span class="icon">🤔</span> 不足与挑战 (Weaknesses & Challenges)</h4>
+                            <ul>
+                                <li><strong>计算成本高昂：</strong> 生成大规模数据集需要惊人的算力（例如1500块L40 GPU），这限制了该方法在中小规模研究机构的普及。</li>
+                                <li><strong>对世界模型的依赖：</strong> 最终策略的性能上限被视频模型的质量（物理真实性、指令遵循能力）牢牢卡住。当前模型生成的视频仍会存在物理谬误。</li>
+                                <li><strong>手动环节依然存在：</strong> 流程的启动仍然需要手动提供初始帧来引导视频生成，这引入了一定的操作开销。</li>
+                                <li><strong>任务复杂性有限：</strong> 实验中的任务多为短期的桌面操作。对于长时序、需要复杂物理推理或与环境动态交互的任务，该方法的有效性仍有待验证。</li>
+                            </ul>
+                        </div>
+                    </div>
+                     <div class="review-item" style="grid-column: 1 / -1;">
+                        <h4><span class="icon">🚀</span> 可能的改进方向 (Future Directions)</h4>
+                        <ul>
+                            <li><strong>提升世界模型保真度：</strong> 持续改进视频生成模型，使其更好地理解和模拟物理规律，是提升整个流程性能的关键。</li>
+                            <li><strong>自动化初始帧生成：</strong> 利用文生图或图像编辑模型，根据语言描述自动生成或修改初始场景，实现端到端的自动化数据生成。</li>
+                            <li><strong>探索与规划结合：</strong> 将 DREAMGEN 生成的短视频片段作为高层规划器的“技能原语”，或许可以解决长时序任务规划的难题。</li>
+                            <li><strong>降低成本：</strong> 研究模型蒸馏、量化或更高效的伪动作标注算法，以降低数据生成和策略训练的算力门槛。</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="one-more-thing" id="onemorething">
+            <div class="container">
+                <h2>One More Thing...</h2>
+                <p>本文的核心思想，可以看作是创造了一种全新的数据形态——<span class="highlight">“神经轨迹” (Neural Trajectories)</span>。它不仅仅是视频，而是视频与通过AI推断出的“伪动作”的结合体。</p>
+                <p>这种数据源自于模型的“想象”，却能有效地指导物理世界的机器人。这开启了一个激动人心的可能性：未来，我们或许不再需要无休止地进行人工示教，而是可以通过与AI模型“对话”和“想象”，来为机器人创造无穷无尽的学习素材。</p>
+                <div class="img-placeholder">Placeholder for Figure 12: Examples of Neural Trajectories</div>
+            </div>
+        </section>
+
+    </main>
+    
+    <footer>
+        <div class="container">
+            <p>由 Gemini 根据学术论文构建。该页面仅为学习和研究目的，所有权利归原作者所有。</p>
+        </div>
+    </footer>
+</body>
+</html>
