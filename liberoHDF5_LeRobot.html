@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HDF5 与 LeRobot 数据集结构速查手册</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f8f9fa;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: #fff;
+            padding: 25px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1, h2, h3 {
+            color: #0056b3;
+            border-bottom: 2px solid #e9ecef;
+            padding-bottom: 10px;
+        }
+        h1 {
+            text-align: center;
+        }
+        .comparison-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 30px;
+            margin-top: 20px;
+        }
+        .dataset-column {
+            flex: 1;
+            min-width: 400px;
+            padding: 20px;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            background-color: #fdfdfd;
+        }
+        .dataset-column h2 {
+            margin-top: 0;
+            color: #17a2b8;
+        }
+        .dataset-column h2.lerobot {
+            color: #28a745;
+        }
+        pre {
+            background-color: #e9ecef;
+            padding: 15px;
+            border-radius: 5px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-size: 14px;
+            color: #495057;
+        }
+        .highlight {
+            font-weight: bold;
+            color: #c82333;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid #dee2e6;
+            padding: 10px;
+            text-align: left;
+        }
+        th {
+            background-color: #f1f3f5;
+        }
+        td {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14px;
+        }
+        .summary {
+            background-color: #e6f7ff;
+            border-left: 5px solid #007bff;
+            padding: 15px;
+            margin-top: 20px;
+            border-radius: 5px;
+        }
+        .note {
+            background-color: #fff3cd;
+            border-left: 5px solid #ffc107;
+            padding: 15px;
+            margin-top: 20px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>HDF5 vs. LeRobot 数据集结构速查手册</h1>
+        <p class="summary">
+            本手册旨在快速对比传统的<strong>单一文件HDF5</strong>数据集与现代化的<strong>目录式LeRobot</strong>数据集的内部结构。理解它们的差异有助于高效地进行数据处理与模型训练。
+        </p>
+
+        <div class="comparison-container">
+            <div class="dataset-column">
+                <h2 style="color: #17a2b8;">原始 HDF5 结构 (例如: LIBERO)</h2>
+                <p><strong>核心思想:</strong> 所有数据存储在一个 <span class="highlight">单一、巨大的二进制文件</span> 中。数据按其类型（观察、动作）进行组织，类似于一个嵌套的字典。</p>
+                <p><strong>优点:</strong> 便于传输和归档（单个文件）。</p>
+                <p><strong>缺点:</strong> 读取效率低（需要加载大块数据才能访问其中一小部分），不便于流式加载和随机访问。</p>
+                <pre>
+my_dataset.hdf5 (单个文件)
+└── data/
+    ├── demo_0/  (Episode 0)
+    │   ├── obs/
+    │   │   ├── agentview_rgb   (形状: [帧数, H, W, 3])
+    │   │   ├── eye_in_hand_rgb (形状: [帧数, H, W, 3])
+    │   │   └── robot0_eef_pos  (形状: [帧数, 3])
+    │   │   └── ... (其他状态)
+    │   └── actions (形状: [帧数, 动作维度])
+    │
+    ├── demo_1/  (Episode 1)
+    │   ├── obs/
+    │   │   └── ...
+    │   └── actions
+    │
+    └── ... (更多 episodes)
+                </pre>
+                <p><strong>关键特征:</strong> 数据按 <span class="highlight">特征类型</span> 聚合。所有 `agentview_rgb` 帧（一个Numpy数组）存储在一起，所有 `actions` 存储在另一个数组中。</p>
+            </div>
+
+            <div class="dataset-column">
+                <h2 style="color: #28a745;">LeRobot 数据集结构</h2>
+                <p><strong>核心思想:</strong> 一个包含多个优化文件的 <span class="highlight">目录</span>。数据通过 <span class="highlight">分块(Chunking)</span> 策略进行组织，以平衡文件数量和大小。</p>
+                <p><strong>优点:</strong> 极高的I/O效率，支持流式加载，易于扩展和修改。</p>
+                <p><strong>缺点:</strong> 文件数量多，不方便作为单个附件传输。</p>
+                <pre>
+my_lerobot_dataset/ (目录)
+├── data/
+│   └── 00000/
+│       └── data.parquet  <span class="highlight">&lt;-- 第一个块 (如Ep 0-999)</span>
+│   └── 00001/
+│       └── data.parquet  <span class="highlight">&lt;-- 第二个块 (如Ep 1000-1999)</span>
+│   └── ...
+├── videos/
+│   └── 00000/
+│       ├── agentview_rgb_0.mp4   (Ep 0 的视频)
+│       ├── agentview_rgb_1.mp4   (Ep 1 的视频)
+│       └── ...
+│   └── 00001/
+│       └── ...
+│   └── ...
+├── info.json             (数据集总体信息)
+├── episodes.jsonl        (每个episode的元数据)
+├── episodes_stats.jsonl  (每个episode的统计信息)
+└── tasks.jsonl           (任务指令列表)
+                </pre>
+                <p><strong>关键特征:</strong> 视频与表格数据分离。表格数据按 <span class="highlight">块</span> 存储，每个块包含多个episodes的数据。</p>
+            </div>
+        </div>
+
+        <h2>核心文件深度解析 (LeRobot)</h2>
+        
+        <div class="note">
+            <h4>💡 核心概念：分块 (Chunking)</h4>
+            <p>LeRobot不为每个episode创建一个文件，也不把所有episodes放进一个文件。它采用分块策略：将episodes分组（例如1000个episodes/块），<strong>同一组的所有表格数据存放在一个 `data.parquet` 文件中</strong>。这在文件数量和大小之间取得了最佳平衡，是实现高性能I/O的关键。</p>
+        </div>
+
+        <h3>1. `data.parquet` - 表格化数据 (状态, 动作, 索引)</h3>
+        <p>这是LeRobot数据集的“大脑”。在逻辑上，它就是一个表格，<strong>每一行代表一个时间步 (frame)</strong>。一个 `data.parquet` 文件包含了<strong>一个块内所有episodes</strong>的所有帧。</p>
+        <table>
+            <thead>
+                <tr>
+                    <th>index</th>
+                    <th>episode_index</th>
+                    <th>task_index</th>
+                    <th>action/cartesian_velocity</th>
+                    <th>state/joint_positions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>100</td>
+                    <td>0</td>
+                    <td>0</td>
+                    <td>[0.1, -0.05, 0.02]</td>
+                    <td>[...7个浮点数...]</td>
+                </tr>
+                <tr>
+                    <td>...</td>
+                    <td>...</td>
+                    <td>...</td>
+                    <td>...</td>
+                    <td>...</td>
+                </tr>
+                <tr>
+                    <td>158340</td>
+                    <td>999</td>
+                    <td>15</td>
+                    <td>[0.0, 0.01, 0.0]</td>
+                    <td>[...7个浮点数...]</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h3>2. `videos/**/*.mp4` - 视频数据</h3>
+        <p>HDF5中按帧堆叠的图像数据，在这里被编码成了标准、高效的视频文件。视频文件与数据块目录对应，每个视频文件只包含 <span class="highlight">一个episode</span> 的 <span class="highlight">一种视角</span>。</p>
+        
+    </div>
+
+</body>
+</html>
